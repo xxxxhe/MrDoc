@@ -6,7 +6,9 @@
 
 from django.utils.translation import gettext_lazy as _
 from django.conf import settings
+from django.urls import resolve,Resolver404
 from email.mime.text import MIMEText
+from email.header import Header
 from app_admin.models import SysSetting
 from loguru import logger
 import random
@@ -34,11 +36,15 @@ def send_email(to_email,vcode_str):
         msg_from = send_emailer  # 发件人邮箱
         passwd = dectry(pwd)  # 发件人邮箱密码
         msg_to = to_email  # 收件人邮箱
+        try:
+            sitename = SysSetting.objects.get(types="basic",name="site_name").value
+        except:
+            sitename = "MrDoc"
         subject = "MrDoc - 重置密码验证码"
         content = "你的验证码为：{}，验证码30分钟内有效！".format(vcode_str)
         msg = MIMEText(content, _subtype='html', _charset='utf-8')
         msg['Subject'] = subject
-        msg['From'] = 'MrDoc助手[{}]'.format(msg_from)
+        msg['From'] = Header(sitename,'utf-8').encode() + " <{}>".format(msg_from)
         msg['To'] = msg_to
         try:
             # print(smtp_host,smtp_port)
@@ -80,3 +86,11 @@ def dectry(p):
         temp = chr(int(i) - ord(j)) # 解密字符 = (加密Unicode码字符 - 秘钥字符的Unicode码)的单字节字符
         dec_str = dec_str+temp
     return dec_str
+
+# 判断是否内部链接
+def is_internal_path(path):
+    try:
+        resolve(path)
+        return True
+    except Resolver404:
+        return False

@@ -9,7 +9,7 @@
 
 
 <p align="center">
-<img src="https://img.shields.io/badge/MrDoc-v0.8.3-brightgreen.svg" title="Mrdoc" />
+<img src="https://img.shields.io/badge/MrDoc-v0.9.2-brightgreen.svg" title="Mrdoc" />
 <img src="https://img.shields.io/badge/Python-3.6+-blue.svg" title="Python" />
 <img src="https://img.shields.io/badge/Django-v2.2-important.svg" title="Django" />
 </p>
@@ -21,9 +21,9 @@
 </p>
 
 <p align="center">
-<a href="https://doc.mrdoc.pro/project-7/">安装手册</a> | 
-<a href="https://doc.mrdoc.pro/project-54/">使用手册</a> |
-<a href="https://doc.mrdoc.pro/project-20/">文档效果</a>
+<a href="https://doc.mrdoc.pro/p/deploy/">安装手册</a> | 
+<a href="https://doc.mrdoc.pro/p/user-guide/">使用手册</a> |
+<a href="https://doc.mrdoc.pro/p/example/">文档效果</a>
 </p>
 
 <p align="center">源码：<a href="https://gitee.com/zmister/MrDoc">码云</a> | 
@@ -40,11 +40,11 @@ MrDoc 适合作为个人和中小型团队的私有云文档、云笔记和知�
 
 MrDoc 全系产品目前涵盖以下终端：
 
-- Web端：开源版、专业版，[版本差异](https://doc.mrdoc.pro/project-7/doc-3441/)
-- 浏览器扩展：支持 Chromium 系列浏览器、Firefox 浏览器，[下载地址](https://gitee.com/zmister/mrdoc-webclipper)
-- 桌面客户端：支持 Windows、macOS、Linux，[下载地址](https://gitee.com/zmister/mrdoc-desktop-release/releases/)
-- 移动客户端：支持 Android，[下载地址](https://gitee.com/zmister/mrdoc-app-release)
-- 微信小程序（开发中）
+- 🌐Web端：开源版、专业版，[版本对比](https://doc.mrdoc.pro/doc/3441/)
+- 💻浏览器扩展：支持 Chromium 系列浏览器、Firefox 浏览器，[下载地址](https://gitee.com/zmister/mrdoc-webclipper)
+- 🗔桌面客户端：支持 Windows、macOS、Linux，[下载地址](https://gitee.com/zmister/mrdoc-desktop-release/releases/)
+- 📱移动客户端：支持 Android，[下载地址](https://gitee.com/zmister/mrdoc-app-release)
+- Obsidian 同步插件：[使用教程](https://doc.mrdoc.pro/doc/45650/)
 
 ## 演示站点
 
@@ -52,30 +52,9 @@ MrDoc 全系产品目前涵盖以下终端：
 
 专业版 - [https://doc.mrdoc.pro](https://doc.mrdoc.pro)
 
-开源版与专业版差异 - [https://doc.mrdoc.pro/project-7/doc-3441/](https://doc.mrdoc.pro/project-7/doc-3441/)
+开源版与专业版对比 - [https://doc.mrdoc.pro/doc/3441/](https://doc.mrdoc.pro/doc/3441/)
 
 用户名：test1  密码：123456
-
-## 打赏支持
-
-<p align="center">「付费部署服务」请添加作者QQ：3280350050</p>
-
-<p align="center">请作者喝一罐红牛，助他天天能迭代，日日可更新。<a href="http://mrdoc.zmister.com/project-7/doc-1366/">打赏赞助鸣谢榜</a></p>
-
-<p align="center">
-<a href="http://mrdoc.zmister.com/project-7/doc-434/">微信</a>|
-<a href="http://mrdoc.zmister.com/project-7/doc-434/">支付宝</a>|
-<a href="http://mrdoc.zmister.com/project-7/doc-434/">QQ</a>|
-<a href="https://paypal.me/zmister">PayPal</a> |
-<a href="https://ko-fi.com/zmister">Ko-Fi</a>
-</p>
-
-<p align="center">
-<img src="http://mrdoc.zmister.com/media/202106/dashang_wxwebp_1622762424.jpg" height=200>
-<img src="http://mrdoc.zmister.com/media/202106/dashang_alipaywebp_1622762435.jpg" height=200>
-<img src="http://mrdoc.zmister.com/media/202106/dashang_qqwebp_1622762444.jpg" height=200>
-</p>
-
 
 ## 适用场景
 
@@ -83,33 +62,61 @@ MrDoc 全系产品目前涵盖以下终端：
 
 ## 功能特性
 
-- **站点管理**
-	- 用户注册、用户登录、用户管理、图片管理、附件管理、文档管理、文集管理、注册邀请码配置、全站关闭注册开关、全站强制登录开关；
-	- 广告代码配置、统计代码配置、站点信息配置、备案号配置；
-	- 附件格式配置、附件大小配置、图片大小配置；
+- **⚙站点管理**
+	- 用户管理
+	- 图片管理
+	- 附件管理
+	- 文档管理
+	- 文集管理
+	- 注册邀请码配置
+	- 登录验证码配置
+	- 全站禁止注册配置
+	- 全站强制登录配置
+	- 广告代码配置
+	- 统计代码配置
+	- 站点信息配置
+	- 备案号配置
+	- 附件配置
 
-- **个人管理**
-	- 文集管理：新建、删除、权限控制、转让、协作、导出、生成电子书格式文件
+- **🧑个人管理**
+	- 文集管理
 	- 文档管理：新建、删除、回收站、历史版本
 	- 文档模板管理：新建、删除
 	- 图片管理：上传、分组、删除
 	- 附件管理：上传、删除
-	- Token管理：借助Token高效新建和获取文档；
+	- Token管理：借助Token API 接口高效新建和获取文档；
 	- 个人信息管理：修改昵称、修改电子邮箱、切换文档编辑器；
-	
-- **文档书写**
+
+- **📚文集控制**
+    - 文集图标配置
+    - 文字水印配置
+    - 文集权限配置：公开、私密、指定用户可见、访问码可见
+    - 下载配置：PDF、EPUB文件生成和下载
+    - 文集协作成员配置
+    - 文集文档拖拽排序
+    - 文集导出
+    - 文集转让
+    
+- **✍文档书写**
 	- 文本文档、表格文档两种文档类型，`Markdown` 、富文本两种编辑模式，`Editor.md`、`Vditor`、`iceEditor`三种编辑器加持，自由选择、自由切换；
 	- 图片、附件、科学公式、音视频、思维导图、流程图、Echart图表；
 	- 文档排序、文档上级设置、文档模板插入；
 	- 文档标签设置；
 
-- **文档阅读**
+- **📖文档阅读**
 	- 两栏式布局，三级目录层级显示，左侧文集大纲，右侧文档正文；
-	- 文档阅读字体缩放、字体类型切换、页面社交分享、移动端阅读优化；
-	- 文集EPUB、PDF文件下载，文档Markdown文件下载；
+	- 文档阅读字体缩放、字体类型切换、日间夜间模式切换、页面社交分享、移动端阅读优化；
+	- 文档 Markdown 文件下载；
 	- 标签关系网络图；
 	- 文档全文搜索；
-	- 私密文档分享码分享
+	- 文档分享码分享；
+	- 文档收藏；
+	
+- **其他特性**
+    - 搜索引擎收录支持；
+    - sitemap站点地图；
+    - 无限用户限制；
+    - 无限空间限制；
 
 完整更新记录详见：[CHANGES.md](./CHANGES.md)
 
@@ -161,6 +168,14 @@ python manage.py runserver
 - [Windows 部署面板 By 小肥羊](https://gitee.com/debj031634/win-django)
 - [VirtualBox/VmWare 虚拟机镜像 By 无名](https://gitee.com/nicktf/tinycore-mrdoc)
 
+## 文档导入工具
+
+- [觅思文档导入工具箱](https://gitee.com/zmister/mrdoc-import-toolbox)
+    - 觅思文档导出的文集
+    - 语雀知识库
+    - 印象笔记
+    - Joplin
+
 ## 其他工具
 
 - [本地文档同步工具 By Atyin](https://gitee.com/atyin/mrdocTools)
@@ -197,4 +212,8 @@ python manage.py runserver
 
 如果违反，开发者保留对侵权者追究责任的权利。
 
-商业授权（专业版）请联系QQ咨询：3280350050
+其他相关协议亦可参考《[免责声明](https://gitee.com/zmister/MrDoc/blob/master/DISCLAIMER.md)》。
+
+商业授权（专业版）请微信咨询：
+
+<img src="https://doc.mrdoc.pro/media/202212/wechatwork_qrcode_20221201165203490192.png" width="200px" />

@@ -24,10 +24,12 @@ from app_doc.views import jsonXssFilter
 from app_admin.models import *
 from app_admin.utils import *
 from loguru import logger
+from urllib.parse import quote
 import re
 import datetime
 import requests
 import os
+import json
 
 
 # 返回验证码图片
@@ -50,6 +52,9 @@ def check_code(request):
 # 登录视图
 def log_in(request):
     to = request.GET.get('next', '/')
+    safe_to = is_internal_path(to)
+    if safe_to is False:
+        to = '/'
     if request.method == 'GET':
         # 登录用户访问登录页面自动跳转到首页
         if request.user.is_authenticated:
@@ -60,6 +65,9 @@ def log_in(request):
         try:
             username = request.POST.get('username','')
             pwd = request.POST.get('password','')
+            if len(pwd) > 50:
+                errormsg = _('密码长度不符！')
+                return render(request, 'login.html', locals())
             # 判断是否需要验证码
             require_login_check_code = SysSetting.objects.filter(types="basic",name="enable_login_check_code")
             if (len(require_login_check_code) > 0) and (require_login_check_code[0].value == 'on'):
@@ -126,6 +134,9 @@ def register(request):
             password = request.POST.get('password',None)
             checkcode = request.POST.get("check_code",None)
             register_code = request.POST.get("register_code",None)
+            if len(password) > 50:
+                errormsg = _('密码长度不符！')
+                return render(request, 'register.html', locals())
             is_register_code = SysSetting.objects.filter(types='basic', name='enable_register_code', value='on')
             if is_register_code.count() > 0: # 开启了注册码设置
                 try:
@@ -296,6 +307,48 @@ def send_email_vcode(request):
     else:
         return JsonResponse({'status':False,'data':_('方法错误')})
 
+
+# 测试电子邮箱配置
+@superuser_only
+@require_http_methods(['POST'])
+def send_email_test(request):
+    smtp_host = request.POST.get('smtp_host', '')
+    send_emailer = request.POST.get('send_emailer', '')
+    smtp_port = request.POST.get('smtp_port', '')
+    username = request.POST.get('username', '')
+    pwd = request.POST.get('pwd', '')
+    ssl = True if request.POST.get('smtp_ssl', '') == 'on' else False
+    # print(smtp_host,smtp_port,send_emailer,username,pwd)
+
+    msg_from = send_emailer  # 发件人邮箱
+    msg_to = send_emailer  # 收件人邮箱
+    try:
+        sitename = SysSetting.objects.get(types="basic", name="site_name").value
+    except:
+        sitename = "MrDoc"
+    subject = "{sitename} - 邮箱配置测试".format(sitename=sitename)
+    content = "此邮件由管理员配置【{sitename}】邮箱信息时发出！".format(sitename=sitename)
+    msg = MIMEText(content, _subtype='html', _charset='utf-8')
+    msg['Subject'] = subject
+    msg['From'] = '{}[{}]'.format(sitename, msg_from)
+    msg['To'] = msg_to
+    try:
+        # print(smtp_host,smtp_port)
+        if ssl:
+            s = smtplib.SMTP_SSL(smtp_host, int(smtp_port))  # 发件箱邮件服务器及端口号
+        else:
+            s = smtplib.SMTP(smtp_host, int(smtp_port))
+        # print(pwd)
+        s.login(username, pwd)
+        s.sendmail(from_addr=msg_from, to_addrs=msg_to, msg=msg.as_string())
+        s.quit()
+        return JsonResponse({'status': True, 'data': _('发送成功')})
+    except smtplib.SMTPException as e:
+        logger.error("邮件发送异常:{}".format(repr(e)))
+        return JsonResponse({'status': False, 'data': repr(e)})
+    except Exception as e:
+        logger.error("邮件发送异常:{}".format(repr(e)))
+        return JsonResponse({'status': False, 'data': repr(e)})
 
 # 后台管理 - 仪表盘
 @superuser_only
@@ -479,6 +532,9 @@ class AdminUserDetail(APIView):
     def delete(self, request, id):
         try:
             user = self.get_object(id)  # 获取用户
+            projects = Project.objects.filter(create_user=user) # 获取用户自己的文集
+            for p in projects:
+                Doc.objects.filter(top_doc=p.id).delete()
             colloas = ProjectCollaborator.objects.filter(user=user)  # 获取参与协作的文集
             # 遍历用户参与协作的文集
             for colloa in colloas:
@@ -911,7 +967,21 @@ class AdminImageList(APIView):
         username = request.query_params.get('username', '')
         page_num = request.query_params.get('page', 1)
         limit = request.query_params.get('limit', 10)
-        if kw == '' and username == '':
+        mode = request.query_params.get('mode', '')
+        if mode == 'scan':
+            img_data = Image.objects.all()
+            img_list = []
+            for img in img_data:
+                quote_path = quote(img.file_path)
+                if quote_path == img.file_path:
+                    used_img_doc = Doc.objects.filter(pre_content__icontains=img.file_path).exists()
+                else:
+                    query = Q(pre_content__icontains=img.file_path) | Q(pre_content__icontains=quote_path)
+                    used_img_doc = Doc.objects.filter(query).exists()
+                if not used_img_doc:
+                    img_list.append(img.file_path)
+            img_data = img_data.filter(file_path__in=img_list).order_by('-create_time')
+        elif kw == '' and username == '':
             img_data = Image.objects.all().order_by('-create_time')
         elif kw != '':
             img_data = Image.objects.filter(file_name__icontains=kw).order_by('-create_time')
@@ -1153,6 +1223,7 @@ def admin_setting(request):
             close_register = request.POST.get('close_register',None) # 禁止注册
             require_login = request.POST.get('require_login',None) # 全站登录
             long_code = request.POST.get('long_code', None)  # 长代码显示
+            disable_update_check = request.POST.get('disable_update_check', None)  # 关闭更新检测
             static_code = request.POST.get('static_code',None) # 统计代码
             ad_code = request.POST.get('ad_code',None) # 广告位1
             ad_code_2 = request.POST.get('ad_code_2',None) # 广告位2
@@ -1237,6 +1308,11 @@ def admin_setting(request):
                 name='long_code',
                 defaults={'value': long_code, 'types': 'basic'}
             )
+            # 更新关闭更新检测状态
+            SysSetting.objects.update_or_create(
+                name='disable_update_check',
+                defaults={'value': disable_update_check, 'types': 'basic'}
+            )
             # 更新邮箱启用状态
             SysSetting.objects.update_or_create(
                 name='enable_email',
@@ -1316,12 +1392,6 @@ def admin_setting(request):
             return render(request, 'app_admin/admin_setting.html',locals())
         # 文档全局设置
         elif types == 'doc':
-            # iframe白名单
-            iframe_whitelist = request.POST.get('iframe_whitelist','')
-            SysSetting.objects.update_or_create(
-                name = 'iframe_whitelist',
-                defaults = {'value':iframe_whitelist,'types':'doc'}
-            )
             # 上传图片大小
             img_size = request.POST.get('img_size', 10)
             try:
@@ -1359,6 +1429,23 @@ def admin_setting(request):
             )
             return render(request, 'app_admin/admin_setting.html', locals())
 
+@superuser_only
+@require_http_methods(['POST'])
+def admin_site_config(request):
+    data = request.POST.get("data",'[]')
+    try:
+        data_json = json.loads(data)
+        for d in data_json:
+            if d['type'] == 'email' and d['name'] == 'pwd':
+                d['value'] = enctry(d['value'])
+            SysSetting.objects.update_or_create(
+                name=d['name'],
+                defaults={'value': d['value'], 'types': d['type']}
+            )
+        return JsonResponse({'code':0})
+    except:
+        logger.exception("更新站点设置出错")
+        return JsonResponse({'code':2,'data':'更新出错'})
 
 # 检测版本更新
 def check_update(request):

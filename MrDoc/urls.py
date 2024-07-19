@@ -18,6 +18,7 @@ from django.urls import path,include,re_path
 from django.views.static import serve
 from django.conf import settings
 from django.contrib.sitemaps import views
+from django.views.generic import TemplateView
 from app_doc.sitemaps import SitemapAll
 from app_admin import views as admin_views
 
@@ -34,10 +35,20 @@ urlpatterns = [
     path('api_app/',include('app_api.urls_app')), # RESTFUL API 接口
     # re_path('^static/(?P<path>.*)$',serve,{'document_root':settings.STATIC_ROOT}),# 静态文件
     re_path('^media/(?P<path>.*)$',serve,{'document_root':settings.MEDIA_ROOT}),# 媒体文件
-    path('sitemap.xml', views.index, {'sitemaps': sitemaps,'template_name':'sitemap/sitemap-index.xml'},name='sitemap',), # 站点地图索引
-    path('sitemap-<section>.xml', views.sitemap, {'sitemaps': sitemaps,'template_name':'sitemap/sitemap.xml'},
-         name='django.contrib.sitemaps.views.sitemap')  # 站点地图
 ]
+
+if settings.SITEMAP:
+    urlpatterns.extend([
+        path('sitemap.xml', views.index, {'sitemaps': sitemaps,'template_name':'sitemap/sitemap-index.xml'},name='sitemap',), # 站点地图索引
+        path('sitemap-<section>.xml', views.sitemap, {'sitemaps': sitemaps,'template_name':'sitemap/sitemap.xml'},
+             name='django.contrib.sitemaps.views.sitemap'),  # 站点地图
+    ])
+
+if settings.EXTEND_ROOT_TXT:
+    for filename in settings.EXTEND_ROOT_TXT:
+        urlpatterns.append(
+            path(filename,TemplateView.as_view(template_name=filename,content_type="text/plain")),  # 扩展媒体文件
+        )
 
 if settings.DEBUG:
     urlpatterns.append(

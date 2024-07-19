@@ -40,7 +40,7 @@ SECRET_KEY = '5&71mt9@^58zdg*_!t(x6g14q*@84d%ptr%%s6e0l50zs0we3d'
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = CONFIG.getboolean('site','debug',fallback=False)
 
-VERSIONS = '0.8.3'
+VERSIONS = '0.9.2'
 
 ALLOWED_HOSTS = ['*']
 
@@ -244,14 +244,31 @@ try:
 except ImportError:
     pass
 
-X_FRAME_OPTIONS = 'SAMEORIGIN'
+X_FRAME_OPTIONS = CONFIG.get("x_frame","option",fallback='SAMEORIGIN')
 
 DATA_UPLOAD_MAX_MEMORY_SIZE = None
 
+# CSRF 可信来源
+csrf_str = CONFIG.get("csrf_origin","allow",fallback=[])
+if csrf_str == []:
+    CSRF_TRUSTED_ORIGINS = csrf_str
+else:
+    CSRF_TRUSTED_ORIGINS = csrf_str.split(',')
+
 # 跨域请求配置
 cors_str = CONFIG.get("cors_origin","allow",fallback=[])
-capacitor_origins = ['http://localhost','capacitor://localhost']
+capacitor_origins = ['http://localhost','capacitor://localhost','app://obsidian.md']
 if cors_str == []:
     CORS_ALLOWED_ORIGINS = capacitor_origins
 else:
     CORS_ALLOWED_ORIGINS = capacitor_origins + cors_str.split(',')
+
+# sitemap 站点地图
+SITEMAP = CONFIG.getboolean('sitemap','status',fallback=True)
+
+# 自定义文本文件显示
+extend_root_txt = CONFIG.get("extend_root_txt","filename",fallback=[])
+if extend_root_txt == []:
+    EXTEND_ROOT_TXT = extend_root_txt
+else:
+    EXTEND_ROOT_TXT = extend_root_txt.split(',')
