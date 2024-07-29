@@ -17,11 +17,12 @@ from rest_framework.pagination import PageNumberPagination # 分页
 from rest_framework.authentication import SessionAuthentication # 认证
 from django.db.models import Q
 from django.db import transaction
-from django.utils.html import strip_tags
+from django.utils.html import strip_tags,escape
 from django.utils.translation import gettext_lazy as _
 from loguru import logger
 from app_api.serializers_app import *
 from app_doc.report_utils import *
+from app_doc.utils import check_user_project_writer_role
 from app_admin.models import UserOptions,SysSetting
 from app_admin.decorators import check_headers,allow_report_file
 from app_api.auth_app import AppAuth,AppMustAuth # 自定义认证
@@ -1218,8 +1219,8 @@ def create_doc(request):
                 colla_project = ProjectCollaborator.objects.filter(project=project,user=request.user)
                 if check_project.count() > 0 or colla_project.count() > 0:
                     # 判断文集下是否存在同名文档
-                    if Doc.objects.filter(name=doc_name,top_doc=int(project)).exists():
-                        return JsonResponse({'status':False,'data':_('文集内不允许同名文档')})
+                    # if Doc.objects.filter(name=doc_name,top_doc=int(project)).exists():
+                    #     return JsonResponse({'status':False,'data':_('文集内不允许同名文档')})
                     # 开启事务
                     with transaction.atomic():
                         save_id = transaction.savepoint()
@@ -1591,7 +1592,7 @@ def move_doc(request):
     # 判断上级文档是否存在
     try:
         if parent_id != '0':
-            parent = Doc.objects.get(id=int(parent_id),create_user=request.user)
+            parent = Doc.objects.get(id=int(parent_id), top_doc=pro_id, status=1)
     except ObjectDoesNotExist:
         return JsonResponse({'status':False,'data':_('上级文档不存在')})
     # 复制文档
@@ -1847,7 +1848,10 @@ def share_doc(request):
         doc_id = request.POST.get('id')
         try:
             # 获取请求参数
-            doc = Doc.objects.get(id=doc_id,create_user=request.user)
+            doc = Doc.objects.get(id=doc_id)
+            has_role = check_user_project_writer_role(request.user.id, doc.top_doc)
+            if has_role is False:
+                return JsonResponse({'status': False, 'data': _('无操作权限')})
             share_type = request.POST.get('share_type',0)
             share_value = request.POST.get('share_value',0)
             is_enable = request.POST.get('is_enable',True)
@@ -2176,6 +2180,7 @@ def get_pro_doc(request):
 @logger.catch()
 def get_pro_doc_tree(request):
     pro_id = request.POST.get('pro_id', None)
+    is_page = request.POST.get('is_page', False)
     if pro_id:
         # 查询存在上级文档的文档
         parent_id_list = Doc.objects.filter(top_doc=pro_id,status=1).exclude(parent_doc=0).values_list('parent_doc',flat=True)
@@ -2229,7 +2234,34 @@ def get_pro_doc_tree(request):
             else:
                 doc_list.append(top_item)
         doc_list = jsonXssFilter(doc_list)
-        return JsonResponse({'status':True,'data':doc_list})
+        if is_page is False:
+            return JsonResponse({'status':True,'data':doc_list})
+        else:
+            # 分页处理
+            paginator = Paginator(doc_list, 20)
+            page = request.POST.get('page', 1)
+            doc_id = request.POST.get('doc_id', None)
+            if doc_id:
+                data_index = -1
+                for index, item in enumerate(doc_list):
+                    if item.get('id') == int(doc_id):
+                        data_index = index
+                        break
+
+                if data_index != -1:
+                    # 计算指定 doc_id 所在的分页页码
+                    items_per_page = 20  # 每页显示的数量，需要和分页器中设置的数量保持一致
+                    page = data_index // items_per_page + 1
+                    # print("文档页码：", page)
+            try:
+                project_toc = paginator.page(page)
+            except PageNotAnInteger:
+                project_toc = paginator.page(1)
+            except EmptyPage:
+                project_toc = paginator.page(paginator.num_pages)
+
+            resp = {'status': True, "total": len(doc_list), 'data': list(project_toc), 'current': page}
+            return JsonResponse(resp)
     else:
         return JsonResponse({'status':False,'data':_('参数错误')})
 
@@ -2641,7 +2673,7 @@ def manage_img_group(request):
         types = request.POST.get('types',None) # 请求类型，0表示创建分组，1表示修改分组，2表示删除分组，3表示获取分组
         # 创建分组
         if int(types) == 0:
-            group_name = request.POST.get('group_name', '')
+            group_name = escape(request.POST.get('group_name', ''))
             if group_name not in ['',_('默认分组'),_('未分组')]:
                 ImageGroup.objects.get_or_create(
                     user = request.user,
@@ -2652,7 +2684,7 @@ def manage_img_group(request):
                 return JsonResponse({'status':False,'data':_('名称无效')})
         # 修改分组
         elif int(types) == 1:
-            group_name = request.POST.get("group_name",'')
+            group_name = escape(request.POST.get("group_name",''))
             if group_name not in ['',_('默认分组'),_('未分组')]:
                 group_id = request.POST.get('group_id', '')
                 ImageGroup.objects.filter(id=group_id,user=request.user).update(group_name=group_name)
@@ -2979,9 +3011,12 @@ def download_doc_md(request,doc_id):
                 return JsonResponse({'status':False,'data':_('文档不存在')})
         else:
             try:
-                doc = Doc.objects.get(id=doc_id,create_user = request.user)
+                doc = Doc.objects.get(id=doc_id)
+                project = Project.objects.get(id=doc.top_doc)
             except ObjectDoesNotExist:
-                return JsonResponse({'status':False,'data':_('文档不存在')})
+                return JsonResponse({'status':False,'data':_('数据不存在')})
+            if request.user != project.create_user and request.user != doc.create_user:
+                return JsonResponse({'status':False,'data':_('无权限')})
     else:
         return render(request,'404.html')
 

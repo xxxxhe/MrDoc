@@ -7,11 +7,14 @@ from django.core.exceptions import PermissionDenied,ObjectDoesNotExist
 from django.conf import settings
 from django.contrib.auth import authenticate,login,logout # 认证相关方法
 from django.contrib.auth.models import User # Django默认用户模型
+from django.core.paginator import Paginator,PageNotAnInteger,EmptyPage,InvalidPage # 后端分页
 from django.shortcuts import render,redirect
 from django.utils.translation import gettext_lazy as _
-from app_doc.util_upload_img import upload_generation_dir,base_img_upload,url_img_upload
+from app_doc.util_upload_img import upload_generation_dir,base_img_upload,url_img_upload,img_upload
+from app_doc.utils import find_doc_next,find_doc_previous
 from app_api.models import UserToken
 from app_doc.models import Project,Doc,DocHistory,Image
+from app_api.utils import read_add_projects,remove_doc_tag
 from loguru import logger
 import time,hashlib
 import traceback,json
@@ -111,6 +114,18 @@ def manage_token(request):
             return JsonResponse({'status':False,'data':_('生成出错，请重试！')})
 
 
+# 检查用户Token
+def check_token(request):
+    token = request.GET.get('token', '')
+    try:
+        token = UserToken.objects.get(token=token)
+        data = {
+            'is_writer':True,
+        }
+        return JsonResponse({'status':True,'data':data})
+    except:
+        return JsonResponse({'status':False})
+
 # 获取文集
 @require_GET
 def get_projects(request):
@@ -129,7 +144,9 @@ def get_projects(request):
                 'id':project.id, # 文集ID
                 'name':project.name, # 文集名称
                 'icon': project.icon,  # 文集图标
-                'type':project.role # 文集状态
+                'type':project.role, # 文集状态
+                'total': Doc.objects.filter(top_doc=project.id, status=1).count(),
+                'create_time': project.create_time
             }
             project_list.append(item)
         return JsonResponse({'status':True,'data':project_list})
@@ -144,6 +161,7 @@ def get_projects(request):
 def get_docs(request):
     token = request.GET.get('token', '')
     sort = request.GET.get('sort',0)
+    limit = request.GET.get('limit', 10)
     if sort == '1':
         sort = '-'
     else:
@@ -152,8 +170,20 @@ def get_docs(request):
         token = UserToken.objects.get(token=token)
         pid = request.GET.get('pid','')
         docs = Doc.objects.filter(create_user=token.user,top_doc=pid,status=1).order_by('{}create_time'.format(sort))  # 查询文集下的文档
+
+        # 分页处理
+        paginator = Paginator(docs, limit)
+        page = request.GET.get('page', 1)
+        try:
+            docs_page = paginator.page(page)
+        except PageNotAnInteger:
+            docs_page = paginator.page(1)
+        except EmptyPage:
+            # docs_page = paginator.page(paginator.num_pages)
+            return JsonResponse({'status': True, 'data': []})
+
         doc_list = []
-        for doc in docs:
+        for doc in docs_page:
             item = {
                 'id': doc.id,  # 文档ID
                 'name': doc.name,  # 文档名称
@@ -172,6 +202,140 @@ def get_docs(request):
     except:
         logger.exception(_("token获取文集异常"))
         return JsonResponse({'status': False, 'data': _('系统异常')})
+
+
+# 获取文集的文档层级列表
+def get_level_docs(request):
+    token = request.GET.get('token', '')
+    try:
+        token = UserToken.objects.get(token=token)
+        pid = request.GET.get('pid', '')
+
+        # 用户有浏览和新增权限的文集列表
+        view_list = read_add_projects(token.user)
+        if int(pid) not in view_list:
+            return JsonResponse({'status': False, 'data': _('无文集权限')})
+
+        # 查询存在上级文档的文档
+        parent_id_list = Doc.objects.filter(top_doc=pid,status=1).exclude(parent_doc=0).values_list('parent_doc',flat=True)
+        # 获取存在上级文档的上级文档ID
+        # print(parent_id_list)
+        doc_list = []
+        doc_cnt = 0
+        # 获取一级文档
+        top_docs = Doc.objects.filter(top_doc=pid,parent_doc=0,status=1).values('id','name','editor_mode','parent_doc').order_by('sort')
+        # 遍历一级文档
+        for doc in top_docs:
+            top_item = {
+                'id':doc['id'],
+                'name':doc['name'],
+                'editor_mode':doc['editor_mode'],
+                'parent_doc':doc['parent_doc'],
+                'top_doc':pid,
+                'sub':[]
+            }
+            doc_cnt += 1
+            # 如果一级文档存在下级文档，查询其二级文档
+            if doc['id'] in parent_id_list:
+                # 获取二级文档
+                sec_docs = Doc.objects.filter(top_doc=pid,parent_doc=doc['id'],status=1).values('id','name','editor_mode','parent_doc').order_by('sort')
+                for doc in sec_docs:
+                    sec_item = {
+                        'id': doc['id'],
+                        'name': doc['name'],
+                        'editor_mode':doc['editor_mode'],
+                        'parent_doc': doc['parent_doc'],
+                        'top_doc':pid,
+                        'sub': []
+                    }
+                    doc_cnt += 1
+                    # 如果二级文档存在下级文档，查询第三级文档
+                    if doc['id'] in parent_id_list:
+                        # 获取三级文档
+                        thr_docs = Doc.objects.filter(top_doc=pid,parent_doc=doc['id'],status=1).values('id','name','editor_mode','parent_doc').order_by('sort')
+                        for doc in thr_docs:
+                            item = {
+                                'id': doc['id'],
+                                'name': doc['name'],
+                                'editor_mode': doc['editor_mode'],
+                                'parent_doc': doc['parent_doc'],
+                                'top_doc':pid,
+                                'sub': []
+                            }
+                            doc_cnt += 1
+                            sec_item['sub'].append(item)
+                        top_item['sub'].append(sec_item)
+                    else:
+                        top_item['sub'].append(sec_item)
+                doc_list.append(top_item)
+            # 如果一级文档没有下级文档，直接保存
+            else:
+                doc_list.append(top_item)
+
+        return JsonResponse({'status': True, 'data': doc_list,'total':doc_cnt})
+    except ObjectDoesNotExist:
+        return JsonResponse({'status': False, 'data': _('token无效')})
+    except:
+        logger.exception(_("token获取文集异常"))
+        return JsonResponse({'status': False, 'data': _('系统异常')})
+
+# 获取个人所有文档列表
+def get_self_docs(request):
+    token = request.GET.get('token', '')
+    sort = request.GET.get('sort',0)
+    kw = request.GET.get('kw','')
+    limit = request.GET.get('limit', 10)
+    if sort == '1':
+        sort = '-'
+    else:
+        sort = ''
+    try:
+        token = UserToken.objects.get(token=token)
+        # 按文档修改时间进行排序
+        if kw == '':
+            docs = Doc.objects.filter(create_user=token.user,status=1).order_by('{}modify_time'.format(sort))
+        else:
+            # kw_list = jieba.cut(kw, cut_all=True)
+            # reduce(operator.or_,(Q(name__icontains=x) for x in kw_list))
+            docs = Doc.objects.filter(create_user=token.user,status=1,name__icontains=kw).order_by('{}modify_time'.format(sort))
+
+        # 分页处理
+        paginator = Paginator(docs, limit)
+        page = request.GET.get('page', 1)
+        try:
+            docs_page = paginator.page(page)
+        except PageNotAnInteger:
+            docs_page = paginator.page(1)
+        except EmptyPage:
+            # docs_page = paginator.page(paginator.num_pages)
+            return JsonResponse({'status': True, 'data': []})
+
+        doc_list = []
+        for doc in docs_page:
+            project = Project.objects.get(id=doc.top_doc)
+            item = {
+                'id': doc.id,  # 文档ID
+                'name': doc.name,  # 文档名称
+                'summary': remove_doc_tag(doc),
+                'parent_doc':doc.parent_doc, # 上级文档
+                'top_doc':doc.top_doc, # 所属文集
+                'project_name':project.name,
+                'project_role':project.role,
+                'project_icon':project.icon,
+                'editor_mode':doc.editor_mode,
+                'status':doc.status, # 文档状态
+                'create_time': doc.create_time,  # 文档创建时间
+                'modify_time': doc.modify_time,  # 文档的修改时间
+                'create_user': doc.create_user.username  # 文档的创建者
+            }
+            doc_list.append(item)
+        return JsonResponse({'status': True, 'data': doc_list})
+    except ObjectDoesNotExist:
+        return JsonResponse({'status': False, 'data': _('token无效')})
+    except:
+        logger.exception("token获取文档列表异常")
+        return JsonResponse({'status': False, 'data': _('系统异常')})
+
 
 
 # 获取单篇文档
@@ -203,14 +367,57 @@ def get_doc(request):
         return JsonResponse({'status': False, 'data': _('系统异常')})
 
 
+# 获取文档上下篇文档
+def get_doc_previous_next(request):
+    token = request.GET.get('token', '')
+    try:
+        token = UserToken.objects.get(token=token)
+        did = request.GET.get('did', '')
+        doc = Doc.objects.get(id=did)  # 查询文档
+        project = Project.objects.get(id=doc.top_doc)  # 查询文档所属的文集
+        # 用户有浏览和新增权限的文集列表
+        view_list = read_add_projects(token.user)
+
+        if project.id not in view_list:
+            return JsonResponse({'status': False, 'data': _('无权限')})
+
+        try:
+            previous_doc = find_doc_previous(did)
+            previous_doc_id = previous_doc.id
+        except Exception as e:
+            logger.error("获取上一篇文档异常")
+            previous_doc_id = None
+        try:
+            next_doc = find_doc_next(did)
+            next_doc_id = next_doc.id
+        except Exception as e:
+            logger.error("获取下一篇文档异常")
+            next_doc_id = None
+        return JsonResponse({'status': True, 'data': {'next':next_doc_id,'previous':previous_doc_id}})
+    except Exception as e:
+        logger.exception("获取文档上下篇文档异常")
+        return JsonResponse({'status':False,'data':'系统异常'})
+
+
+
 # 新建文集
 @require_http_methods(['GET','POST'])
 @csrf_exempt
 def create_project(request):
     token = request.GET.get('token', '')
-    project_name = request.POST.get('name','')
-    project_desc = request.POST.get('desc','')
-    project_role = request.POST.get('role',1)
+    content_type = request.headers.get('Content-Type', '').lower()
+    if 'json' in content_type:
+        try:
+            json_data = json.loads(request.body.decode('utf-8'))
+            project_name = json_data.get('name', '')
+            project_desc = json_data.get('desc', '')
+            project_role = json_data.get('role', 1)
+        except json.JSONDecodeError:
+            return JsonResponse({'data': 'Invalid JSON data', 'status': False})
+    else:
+        project_name = request.POST.get('name', '')
+        project_desc = request.POST.get('desc', '')
+        project_role = request.POST.get('role', 1)
     if project_name == '':
         return JsonResponse({'status': False, 'data': _('文集名称不能为空！')})
     try:
@@ -235,10 +442,23 @@ def create_project(request):
 @csrf_exempt
 def create_doc(request):
     token = request.GET.get('token', '')
-    project_id = request.POST.get('pid','')
-    doc_title = request.POST.get('title','')
-    doc_content = request.POST.get('doc','')
-    editor_mode = request.POST.get('editor_mode',1)
+    content_type = request.headers.get('Content-Type', '').lower()
+    if 'json' in content_type:
+        try:
+            json_data = json.loads(request.body.decode('utf-8'))
+            project_id = json_data.get('pid', '')
+            doc_title = json_data.get('title', '')
+            doc_content = json_data.get('doc', '')
+            parent_doc = json_data.get('parent_doc', 0)
+            editor_mode = json_data.get('editor_mode', 1)
+        except json.JSONDecodeError:
+            return JsonResponse({'data': 'Invalid JSON data', 'status': False})
+    else:
+        project_id = request.POST.get('pid', '')
+        doc_title = request.POST.get('title', '')
+        doc_content = request.POST.get('doc', '')
+        editor_mode = request.POST.get('editor_mode', 1)
+        parent_doc = request.POST.get('parent_doc', 0)
     try:
         # 验证Token
         token = UserToken.objects.get(token=token)
@@ -252,6 +472,7 @@ def create_doc(request):
                     pre_content=doc_content,  # 文档的编辑内容，意即编辑框输入的内容
                     top_doc=project_id,  # 所属文集
                     editor_mode=editor_mode,  # 编辑器模式
+                    parent_doc=parent_doc,  # 上级文档
                     create_user=token.user  # 创建的用户
                 )
             elif int(editor_mode) == 3:
@@ -260,6 +481,7 @@ def create_doc(request):
                     content=doc_content,  # 文档的编辑内容，意即编辑框输入的内容
                     top_doc=project_id,  # 所属文集
                     editor_mode=editor_mode,  # 编辑器模式
+                    parent_doc=parent_doc,  # 上级文档
                     create_user=token.user  # 创建的用户
                 )
             return JsonResponse({'status': True, 'data': doc.id})
@@ -276,10 +498,23 @@ def create_doc(request):
 @csrf_exempt
 def modify_doc(request):
     token = request.GET.get('token', '')
-    project_id = request.POST.get('pid','')
-    doc_id = request.POST.get('did', '')
-    doc_title = request.POST.get('title','')
-    doc_content = request.POST.get('doc','')
+    content_type = request.headers.get('Content-Type', '').lower()
+    if 'json' in content_type:
+        try:
+            json_data = json.loads(request.body.decode('utf-8'))
+            project_id = json_data.get('pid', '')
+            doc_id = json_data.get('did', '')
+            doc_title = json_data.get('title', '')
+            doc_content = json_data.get('doc', '')
+            parent_doc = json_data.get('parent_doc', '')
+        except json.JSONDecodeError:
+            return JsonResponse({'data': 'Invalid JSON data', 'status': False})
+    else:
+        project_id = request.POST.get('pid', '')
+        doc_id = request.POST.get('did', '')
+        doc_title = request.POST.get('title', '')
+        doc_content = request.POST.get('doc', '')
+        parent_doc = request.POST.get('parent_doc', '')
     try:
         # 验证Token
         token = UserToken.objects.get(token=token)
@@ -289,6 +524,7 @@ def modify_doc(request):
         if is_project.exists():
             # 将现有文档内容写入到文档历史中
             doc = Doc.objects.get(id=doc_id,top_doc=project_id)
+            parent_id = doc.parent_doc if parent_doc == '' else parent_doc
             DocHistory.objects.create(
                 doc=doc,
                 pre_content=doc.pre_content,
@@ -299,12 +535,14 @@ def modify_doc(request):
                 Doc.objects.filter(id=int(doc_id),top_doc=project_id).update(
                     name=doc_title,
                     pre_content=doc_content,
+                    parent_doc=parent_id,
                     modify_time=datetime.datetime.now(),
                 )
             elif doc.editor_mode == 3: # 富文本文档
                 Doc.objects.filter(id=int(doc_id),top_doc=project_id).update(
                     name=doc_title,
                     content=doc_content,
+                    parent_doc=parent_id,
                     modify_time=datetime.datetime.now(),
                 )
             elif doc.editor_mode == 4: # 在线表格
@@ -327,12 +565,27 @@ def upload_img(request):
     # {"success": 1, "url": "图片地址"}
     ##################
     token = request.GET.get('token', '')
-    base64_img = request.POST.get('data','')
+    content_type = request.headers.get('Content-Type', '').lower()
+    if 'json' in content_type:
+        try:
+            json_data = json.loads(request.body.decode('utf-8'))
+            base64_img = json_data.get('base64', None)
+            commom_img = json_data.get('image', None)
+        except json.JSONDecodeError:
+            return JsonResponse({'data': 'Invalid JSON data', 'status': False})
+    else:
+        base64_img = request.POST.get('data', None)
+        commom_img = request.FILES.get('image', None)  # 普通图片上传
     try:
         # 验证Token
         token = UserToken.objects.get(token=token)
         # 上传图片
-        result = base_img_upload(base64_img, '', token.user)
+        if base64_img:
+            result = base_img_upload(base64_img, '', token.user)
+        elif commom_img:
+            result = img_upload(commom_img, '', token.user)
+        else:
+            return JsonResponse({'status': False, 'data': _('无有效图片')})
         return JsonResponse(result)
         # return HttpResponse(json.dumps(result), content_type="application/json")
     except ObjectDoesNotExist:
@@ -364,3 +617,37 @@ def upload_img_url(request):
     except:
         logger.error(_("token上传url图片异常"))
         return JsonResponse({'success':0,'data':_('上传出错')})
+
+# 删除文档（软删除）
+@csrf_exempt
+@require_http_methods(['GET','POST'])
+def delete_doc(request):
+    token = request.GET.get('token', '')
+    content_type = request.headers.get('Content-Type', '').lower()
+    if 'json' in content_type:
+        try:
+            json_data = json.loads(request.body.decode('utf-8'))
+            doc_id = json_data.get('did', '')
+        except json.JSONDecodeError:
+            return JsonResponse({'data': 'Invalid JSON data', 'status': False})
+    else:
+        doc_id = request.POST.get('did', '')
+    try:
+        # 验证Token
+        token = UserToken.objects.get(token=token)
+        doc = Doc.objects.get(id=doc_id)
+
+        # 验证权限
+        if doc.create_user == token.user:
+            Doc.objects.filter(id=int(doc_id)).update(
+                status=3,
+                modify_time=datetime.datetime.now(),
+            )
+            return JsonResponse({'status': True, 'data': 'ok'})
+        else:
+            return JsonResponse({'status':False,'data':'非法请求'})
+    except ObjectDoesNotExist:
+        return JsonResponse({'status': False, 'data': 'token无效'})
+    except:
+        logger.exception("token修改文档异常")
+        return JsonResponse({'status':False,'data':'系统异常'})

@@ -146,6 +146,49 @@ function toggleSidebar(){
     return false;
 }
 
+const darkmode =  new Darkmode({
+    autoMatchOsTheme:false,
+
+});
+
+// 页面初始化夜间模式
+initTheme = function(){
+    themeDarkStatus = window.localStorage.getItem("theme-dark")
+    // 如果本地存储为夜间模式
+    if(themeDarkStatus == '1' && $("html").hasClass("theme-dark") == false){
+        $("html").toggleClass("theme-dark")
+        $(".theme-switch i").removeClass("fa-moon-o")
+        $(".theme-switch i").addClass("fa-sun-o")
+    }
+    console.log(darkmode.isActivated())
+    if(darkmode.isActivated()){
+        darkmode.toggle()
+    }
+}
+initTheme();
+// 切换日/夜间模式
+$(function(){
+    $(".theme-switch").click(toggleDark);
+});
+function toggleDark(){
+    if($("html").hasClass("theme-dark")){
+        window.localStorage.removeItem("theme-dark")
+        $(".theme-switch i").removeClass("fa-sun-o")
+        $(".theme-switch i").addClass("fa-moon-o")
+        $("a.theme-switch").attr("title","切换至夜间模式")
+    }else{
+        window.localStorage.setItem("theme-dark","1")
+        $(".theme-switch i").removeClass("fa-moon-o")
+        $(".theme-switch i").addClass("fa-sun-o")
+        $("a.theme-switch").attr("title","切换至日间模式")
+    }
+    $("html").toggleClass("theme-dark");
+    console.log(darkmode.isActivated())
+    if(darkmode.isActivated()){
+        darkmode.toggle();
+    }
+}
+
 /*
     页面初始化字体设置
 */
@@ -507,20 +550,7 @@ function keyLight(id, key, bgColor){
     // console.log(id,key,decodeURI(key))
     if(key != false){
         key = decodeURI(key);
-        var oDiv = document.getElementById(id),
-        sText = oDiv.innerHTML,
-        num = -1,
-        rStr = new RegExp(key, "ig"),
-        rHtml = new RegExp("\<.*?\>","ig"), //匹配html元素
-        aHtml = sText.match(rHtml), //存放html元素的数组
-        sText = sText.replace(rHtml, '{~}');  //替换html标签
-        sText = sText.replace(rStr,function(text){
-            return "<mark>" + text +"</mark>"
-        }); //替换key
-        sText = sText.replace(/{~}/g,function(){  //恢复html标签
-                num++;
-                return aHtml[num];
-        });
-        oDiv.innerHTML = sText;
+        var markInstance = new Mark(document.getElementById(id));
+        markInstance.mark(key);
     }
 };
